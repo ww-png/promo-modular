@@ -194,19 +194,9 @@ async function analyze() {
       <span>Claude가 페이지 구성을 분석하고 있어요...</span>
     </div>`;
 
-  const systemPrompt = `당신은 프로모션 페이지 구성 전문가입니다. 사용자가 초안과 모듈 목록을 주면, 반드시 아래 JSON 형식만 반환하세요. 코드블록이나 다른 텍스트 없이 순수 JSON만 반환하세요.
+  const systemPrompt = `당신은 프로모션 페이지 구성 전문가입니다. 아래 JSON 형식만 반환하세요. 마크다운 코드블록 없이 순수 JSON만 반환하세요. 각 문자열 값 안에 줄바꿈이 필요하면 반드시 \\n 이스케이프를 사용하고, 큰따옴표는 \\" 로 이스케이프 하세요.
 
-{
-  "brief": {
-    "goal": "캠페인의 핵심 목표 1-2문장",
-    "audience": "주요 타겟 고객층 설명",
-    "modules": ["추천 모듈1", "추천 모듈2"],
-    "message": "가장 강조해야 할 핵심 메시지",
-    "caution": "디자인 시 주의할 점"
-  },
-  "figma": "Figma 또는 Claude Design에 바로 붙여넣을 수 있는 상세 페이지 구성 프롬프트. 각 섹션의 레이아웃, 컴포넌트, 텍스트 예시, 색상 제안을 포함하여 3-5문단으로 구체적으로 작성.",
-  "notion": "# 프로모션 페이지 구조\n\n## 캠페인 개요\n- 목표:\n- 타겟:\n\n## 섹션 구성\n각 섹션을 구체적으로 인덴트 포함하여 작성."
-}`;
+{"brief":{"goal":"캠페인 핵심 목표 1-2문장","audience":"타겟 고객층","modules":["모듈1","모듈2"],"message":"핵심 메시지","caution":"디자인 주의사항"},"figma":"Figma 프롬프트 (2-3문단, 줄바꿈은 \\n 사용)","notion":"Notion 구조 (줄바꿈은 \\n 사용)"}`;
 
   const userMsg = `프로모션 초안:\n${draft}\n\n사용할 모듈 (순서대로):\n${modules.join(', ')}`;
 
@@ -221,7 +211,7 @@ async function analyze() {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
+        max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       }),
@@ -234,8 +224,19 @@ async function analyze() {
 
     const data = await res.json();
     const text = data.content?.[0]?.text || '{}';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+
+    let parsed;
+    try {
+      const clean = text.replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+      parsed = JSON.parse(clean);
+    } catch(parseErr) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('응답 형식 오류: ' + parseErr.message);
+      }
+    }
 
     lastResult = {
       brief: parsed.brief,
